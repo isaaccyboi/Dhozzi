@@ -1,0 +1,16 @@
+{
+  "short_name": "Dhozzi",
+  "name": "Dhozzi AI",
+  "description": "Meet Dhozzi, Australia and New Zealand's friendly AI engine. Chat, create with images, and more, all wrapped in a slick, modern design.",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#111827",
+  "background_color": "#111827"
+}

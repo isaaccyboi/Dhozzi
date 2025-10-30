@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF--8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dhozzi</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="manifest" href="/manifest.json">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      /* Custom font for a more modern feel */
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Fira+Code&display=swap');
+      html, body {
+        height: 100%;
+        margin: 0;
+        overscroll-behavior: none;
+      }
+      body {
+        font-family: 'Inter', sans-serif;
+        /* New background: dark grey with subtle deep blue/purple radial gradients */
+        background-color: #111827; /* gray-900 */
+        background-image: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(124, 58, 237, 0.3), transparent),
+                          radial-gradient(ellipse 80% 50% at 50% 120%, rgba(37, 99, 235, 0.3), transparent);
+        overflow: hidden; /* Lock page scrolling for an app-like feel */
+      }
+      /* Define default theme colors */
+      :root {
+        --color-primary-start: #2563eb; /* blue-600 */
+        --color-primary-end: #1d4ed8;   /* blue-700 */
+        --color-accent: #3b82f6;       /* blue-500 */
+        --color-user-message: var(--color-accent);
+        --glow-color-1: rgba(37, 99, 235, 0.2);
+        --glow-color-2: rgba(99, 102, 241, 0.2); /* indigo-500 */
+      }
+      /* Custom scrollbar for a sleek look */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background-color: rgba(255, 255, 255, 0.2);
+        border-radius: 10px;
+        border: 2px solid transparent;
+        background-clip: content-box;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(255, 255, 255, 0.4);
+      }
+      /* Animations */
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-fade-in {
+        animation: fadeIn 0.5s ease-out forwards;
+      }
+      @keyframes fadeIn-fast {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      .animate-fade-in-fast {
+        animation: fadeIn-fast 0.2s ease-out forwards;
+      }
+      @keyframes slide-in-right {
+        from { transform: translateX(100%); }
+        to { transform: translateX(0); }
+      }
+      .animate-slide-in-right {
+        animation: slide-in-right 0.3s ease-out forwards;
+      }
+      @keyframes slide-in-left {
+        from { transform: translateX(-100%); }
+        to { transform: translateX(0); }
+      }
+      .animate-slide-in-left {
+        animation: slide-in-left 0.3s ease-out forwards;
+      }
+
+      /* Subtle pulsing glow for the chat window */
+      @keyframes subtle-glow {
+        0%, 100% {
+          box-shadow: 0 0 20px var(--glow-color-1), 0 0 30px var(--glow-color-2);
+        }
+        50% {
+          box-shadow: 0 0 30px var(--glow-color-1), 0 0 40px var(--glow-color-2);
+        }
+      }
+      .animate-subtle-glow {
+        animation: subtle-glow 8s ease-in-out infinite;
+      }
+
+      /* Visual indicator animations for Live Call */
+      @keyframes breathing {
+        0%, 100% { transform: scale(1); opacity: 0.8; }
+        50% { transform: scale(1.05); opacity: 1; }
+      }
+      .animate-breathing {
+        animation: breathing 4s ease-in-out infinite;
+      }
+      
+      @keyframes sonar-wave {
+        from {
+          transform: scale(0.5);
+          opacity: 0.6;
+        }
+        to {
+          transform: scale(2.5);
+          opacity: 0;
+        }
+      }
+      .animate-sonar-wave {
+        position: absolute;
+        inset: 0;
+        border-radius: 9999px; /* rounded-full */
+        border: 2px solid var(--color-accent);
+        animation: sonar-wave 2s ease-out infinite;
+      }
+
+      /* Checkmark animation for payment success */
+      @keyframes stroke {
+        100% { stroke-dashoffset: 0; }
+      }
+      @keyframes scale {
+        0%, 100% { transform: none; }
+        50% { transform: scale3d(1.1, 1.1, 1); }
+      }
+      .checkmark__circle {
+        stroke-dasharray: 166;
+        stroke-dashoffset: 166;
+        stroke-width: 3;
+        stroke-miterlimit: 10;
+        stroke: #4bb71b;
+        fill: none;
+        animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+      }
+      .checkmark__check {
+        transform-origin: 50% 50%;
+        stroke-dasharray: 48;
+        stroke-dashoffset: 48;
+        animation: stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.8s forwards;
+      }
+      .checkmark {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        display: block;
+        stroke-width: 3;
+        stroke: #fff;
+        stroke-miterlimit: 10;
+        margin: auto;
+        animation: scale 0.3s ease-in-out 0.9s both;
+      }
+
+      /* Style for drag-and-drop target */
+      .drop-target {
+        background-color: rgba(255, 255, 255, 0.1);
+        border-color: var(--color-accent);
+      }
+      /* Code block styling */
+      .prose code::before, .prose code::after {
+        content: '' !important;
+      }
+      .prose pre {
+        background-color: #1f2937; /* gray-800 */
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 1rem;
+        border-radius: 0.5rem;
+        color: #d1d5db; /* gray-300 */
+        font-size: 0.875rem;
+        line-height: 1.5rem;
+        overflow-x: auto;
+        font-family: 'Fira Code', 'Courier New', monospace;
+      }
+      .prose pre code {
+        background-color: transparent;
+        padding: 0;
+        border-radius: 0;
+        border: none;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.23.0",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react-markdown": "https://aistudiocdn.com/react-markdown@^10.1.0",
+    "firebase/": "https://aistudiocdn.com/firebase@^12.4.0/"
+  }
+}
+</script>
+</head>
+  <body class="text-white">
+    <div id="root" class="h-full w-full"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

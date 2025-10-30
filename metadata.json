@@ -1,0 +1,9 @@
+{
+  "name": "Dhozzi",
+  "description": "Meet Dhozzi, Australia and New Zealand's friendly AI engine. Chat, create with images, and more, all wrapped in a slick, modern design.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}

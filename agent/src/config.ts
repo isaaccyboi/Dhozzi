@@ -5,6 +5,15 @@
  * Cache writes bill at 1.25x the input rate (5-minute TTL); cache reads at 0.1x.
  */
 
+/**
+ * Product name and version of the *harness* — the loop, tools, verifier, and
+ * safety layer in this directory. It is not a model, and there is no "Dhozzi"
+ * model behind it: every request is served by whichever Claude model `--model`
+ * selects. The banner prints both so the distinction is never ambiguous.
+ */
+export const HARNESS_NAME = "Dhozzi";
+export const HARNESS_VERSION = "2.5";
+
 export interface ModelPricing {
   /** USD per million input tokens. */
   input: number;
@@ -123,6 +132,13 @@ export interface AgentConfig {
   approval: ApprovalMode;
   /** Emit machine-readable JSON events instead of prose. */
   json: boolean;
+  /**
+   * Hold the agent's work to the project's own checks and send failures back
+   * for repair. Ignored in readonly mode, where nothing changes.
+   */
+  verify: boolean;
+  /** Repair rounds attempted after the first verification failure. */
+  repairAttempts: number;
 }
 
 export type ApprovalMode = "ask" | "auto" | "readonly";
@@ -139,6 +155,8 @@ export const DEFAULT_CONFIG: Omit<AgentConfig, "root"> = {
   webTools: false,
   approval: "ask",
   json: false,
+  verify: true,
+  repairAttempts: 3,
 };
 
 /** Hard caps that keep a single tool result from blowing up the context window. */

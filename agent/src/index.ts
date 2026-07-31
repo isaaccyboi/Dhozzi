@@ -10,11 +10,15 @@
 import * as path from "node:path";
 import * as fs from "node:fs";
 import * as readline from "node:readline/promises";
-import { Agent, type AgentEvents } from "./agent.js";
+import { Agent, type AgentEvents, type RunResult } from "./agent.js";
 import type { CostMeter } from "./cost.js";
+import { formatVerdict, runSupervised, type SupervisedResult } from "./supervisor.js";
+import { detectChecks, formatReport, verify } from "./verify.js";
 import {
   DEFAULT_CONFIG,
   EFFORTS,
+  HARNESS_NAME,
+  HARNESS_VERSION,
   PRICING,
   type AgentConfig,
   type ApprovalMode,
@@ -31,7 +35,11 @@ const c = {
   yellow: (s: string) => (USE_COLOR ? `\x1b[33m${s}\x1b[0m` : s),
 };
 
-const HELP = `dhozzi-agent — a cost-aware terminal coding agent
+const HELP = `${HARNESS_NAME} ${HARNESS_VERSION} — a verifying, cost-aware coding agent
+
+${HARNESS_NAME} ${HARNESS_VERSION} is the harness: the agent loop, tools, verifier,
+and safety layer. It is not a model. Every request is served by the Claude model
+named in --model, and the harness is what decides how well that model is used.
 
 USAGE
   dhozzi-agent [options] "task"        run one task and exit
@@ -49,6 +57,11 @@ OPTIONS
       --readonly            inspection only; no writes, no edits, no arbitrary shell
       --yes                 run mutating tools without prompting (use in a sandbox)
                             default: prompt before writes, edits, and non-trivial shell
+
+  VERIFICATION
+      --no-verify           accept the agent's word instead of running the checks
+      --repair-attempts <n> repair rounds after a failed check (default: ${DEFAULT_CONFIG.repairAttempts})
+      --check               run the project's checks and exit; no agent, no cost
 
   COST AND CONTEXT
       --no-cache            disable prompt caching (rarely what you want)
@@ -74,6 +87,7 @@ interface ParsedArgs {
   task: string | null;
   showHelp: boolean;
   listModels: boolean;
+  checkOnly: boolean;
   error: string | null;
 }
 
@@ -82,6 +96,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   const positional: string[] = [];
   let showHelp = false;
   let listModels = false;
+  let checkOnly = false;
   let error: string | null = null;
 
   const needValue = (flag: string, index: number): string => {
@@ -173,6 +188,23 @@ function parseArgs(argv: string[]): ParsedArgs {
       case "--no-fallback":
         config.refusalFallback = false;
         break;
+      case "--no-verify":
+        config.verify = false;
+        break;
+      case "--check":
+        checkOnly = true;
+        break;
+      case "--repair-attempts": {
+        const raw = needValue(arg, i);
+        const n = Number(raw);
+        if (!Number.isFinite(n) || n < 0) {
+          error ??= `--repair-attempts must be zero or a positive number, got "${raw}"`;
+        } else {
+          config.repairAttempts = Math.trunc(n);
+        }
+        i += 1;
+        break;
+      }
       case "--web":
         config.webTools = true;
         break;
@@ -193,6 +225,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     task: positional.length > 0 ? positional.join(" ") : null,
     showHelp,
     listModels,
+    checkOnly,
     error,
   };
 }
@@ -296,9 +329,77 @@ function printSummary(meter: CostMeter, config: AgentConfig): void {
   console.log(c.dim(meter.summary()));
 }
 
+/** Whether verification applies: it is pointless when nothing can change. */
+function verificationEnabled(config: AgentConfig): boolean {
+  return config.verify && config.approval !== "readonly";
+}
+
+/**
+ * Run one task, verified if the project supports it, and report the verdict.
+ * Returns the underlying run so the caller can inspect why it stopped.
+ */
+async function executeTask(agent: Agent, config: AgentConfig, task: string): Promise<RunResult> {
+  if (!verificationEnabled(config)) {
+    const run = await agent.run(task);
+    if (run.stoppedBecause !== "completed" && run.finalText) {
+      console.log(`\n${c.yellow(run.finalText)}`);
+    }
+    return run;
+  }
+
+  const supervised: SupervisedResult = await runSupervised(agent, config, task, {
+    maxRepairAttempts: config.repairAttempts,
+    onPhase: (message) => {
+      if (config.json) {
+        process.stdout.write(`${JSON.stringify({ type: "phase", message })}\n`);
+      } else {
+        console.log(c.dim(`  · ${message}`));
+      }
+    },
+  });
+
+  if (supervised.run.stoppedBecause !== "completed" && supervised.run.finalText) {
+    console.log(`\n${c.yellow(supervised.run.finalText)}`);
+  }
+
+  const verdict = formatVerdict(supervised);
+  if (config.json) {
+    process.stdout.write(
+      `${JSON.stringify({
+        type: "verdict",
+        verdict: supervised.verdict,
+        repair_attempts: supervised.repairAttempts,
+        outstanding: supervised.outstanding.map((r) => r.name),
+        pre_existing_failures: supervised.preExisting,
+        grader_files_touched: supervised.graderFilesTouched,
+      })}\n`,
+    );
+  } else {
+    const paint =
+      supervised.verdict === "verified"
+        ? c.green
+        : supervised.verdict === "regressed"
+          ? c.red
+          : c.yellow;
+    console.log(`\n${paint(verdict)}`);
+  }
+
+  return supervised.run;
+}
+
 async function interactive(agent: Agent, config: AgentConfig): Promise<void> {
-  console.log(c.bold("dhozzi-agent") + c.dim(` · ${config.model} · effort ${config.effort} · ${config.approval} approval`));
+  console.log(
+    c.bold(`${HARNESS_NAME} ${HARNESS_VERSION}`)
+    + c.dim(` harness · model ${config.model} · effort ${config.effort} · ${config.approval} approval`),
+  );
   console.log(c.dim(`root: ${config.root}`));
+  console.log(
+    c.dim(
+      verificationEnabled(config)
+        ? `verification on (up to ${config.repairAttempts} repair rounds)`
+        : "verification off",
+    ),
+  );
   console.log(c.dim("Type a task. /cost for spend, /exit to quit.\n"));
 
   for (;;) {
@@ -322,13 +423,31 @@ async function interactive(agent: Agent, config: AgentConfig): Promise<void> {
       continue;
     }
 
-    const result = await agent.run(task);
-    if (result.stoppedBecause !== "completed" && result.finalText) {
-      console.log(`\n${c.yellow(result.finalText)}`);
-    }
+    await executeTask(agent, config, task);
     printSummary(agent.costMeter, config);
     console.log();
   }
+}
+
+/** `--check`: run the project's checks and exit. No model, no cost. */
+async function checkOnly(config: AgentConfig): Promise<number> {
+  const checks = detectChecks(config.root);
+  if (checks.length === 0) {
+    console.log(c.yellow("No type check, linter, or test suite detected in this project."));
+    return 0;
+  }
+  console.log(c.dim(`checks: ${checks.map((check) => check.name).join(", ")}\n`));
+
+  const report = await verify(checks, config.root, {
+    failFast: false,
+    onCheckStart: (check) => console.log(c.dim(`  running ${check.name}…`)),
+  });
+
+  console.log(`\n${formatReport(report)}`);
+  for (const result of report.results) {
+    if (!result.passed) console.log(`\n${c.red(`--- ${result.name} ---`)}\n${result.output}`);
+  }
+  return report.passed ? 0 : 1;
 }
 
 async function main(): Promise<number> {
@@ -354,6 +473,9 @@ async function main(): Promise<number> {
     console.error(c.red(`error: --root is not a directory: ${config.root}`));
     return 2;
   }
+  if (parsed.checkOnly) {
+    return await checkOnly(config);
+  }
   if (!PRICING[config.model]) {
     console.error(
       c.yellow(`warning: no price on file for "${config.model}"; cost will not be estimated.`),
@@ -376,10 +498,7 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  const result = await agent.run(parsed.task);
-  if (result.stoppedBecause !== "completed" && result.finalText) {
-    console.log(`\n${c.yellow(result.finalText)}`);
-  }
+  const result = await executeTask(agent, config, parsed.task);
   printSummary(agent.costMeter, config);
 
   return result.stoppedBecause === "error" ? 1 : 0;

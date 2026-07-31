@@ -1,9 +1,9 @@
 {
   "name": "dhozzi-agent",
-  "version": "0.1.0",
+  "version": "2.5.0",
   "private": true,
   "type": "module",
-  "description": "A cost-aware terminal coding agent built on the Claude API.",
+  "description": "Dhozzi 2.5 — a verifying, cost-aware terminal coding agent harness built on the Claude API. Not a model.",
   "bin": {
     "dhozzi-agent": "./dist/index.js"
   },

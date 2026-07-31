@@ -1,0 +1,29 @@
+{
+  "name": "dhozzi-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A cost-aware terminal coding agent built on the Claude API.",
+  "bin": {
+    "dhozzi-agent": "./dist/index.js"
+  },
+  "scripts": {
+    "agent": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.0",
+    "fast-glob": "^3.3.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "tsx": "^4.19.2",
+    "typescript": "~5.8.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

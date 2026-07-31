@@ -20,6 +20,7 @@
 import * as path from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { gradedEnv } from "./subprocess.js";
 
 export interface Check {
   /** Short label, e.g. "typecheck". */
@@ -128,7 +129,7 @@ async function runCheck(check: Check, root: string): Promise<CheckResult> {
   return await new Promise<CheckResult>((resolve) => {
     const child = spawn("bash", ["-c", check.command], {
       cwd: root,
-      env: { ...process.env, CI: "1", FORCE_COLOR: "0", NO_COLOR: "1" },
+      env: gradedEnv(),
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -232,14 +233,39 @@ export function preExistingFailures(baseline: VerificationReport): string[] {
   return baseline.results.filter((r) => !r.passed).map((r) => r.name);
 }
 
-/** Render regressions as feedback the agent can act on. */
-export function formatRegressions(regressions: readonly Regression[]): string {
+/** All currently failing checks, expressed as actionable items. */
+export function allFailures(current: VerificationReport): Regression[] {
+  return current.results
+    .filter((result) => !result.passed)
+    .map((result) => ({ name: result.name, command: result.command, output: result.output }));
+}
+
+/**
+ * Render failing checks as feedback the agent can act on.
+ *
+ * The opening sentence differs by mode because the two situations call for
+ * different reasoning: a regression means the cause is in the diff just made,
+ * whereas a pre-existing failure means the bug is somewhere in the code as it
+ * already stood. Telling an agent it broke something it did not break sends it
+ * looking in the wrong place.
+ */
+export function formatRegressions(
+  regressions: readonly Regression[],
+  mode: "regression" | "must-be-green" = "regression",
+): string {
   const blocks = regressions.map(
     (r) => `### ${r.name} failed\n\nCommand: \`${r.command}\`\n\n\`\`\`\n${r.output}\n\`\`\``,
   );
+  const opening =
+    mode === "regression"
+      ? "Verification failed. These checks passed before your changes and fail now, "
+        + "so the cause is in what you just did."
+      : "Verification failed. These checks must pass before this task is complete. "
+        + "They may have been failing before you started — the failure output below is "
+        + "the current state either way.";
+
   return [
-    "Verification failed. These checks passed before your changes and fail now, "
-      + "so the cause is in what you just did.",
+    opening,
     "",
     ...blocks,
     "",

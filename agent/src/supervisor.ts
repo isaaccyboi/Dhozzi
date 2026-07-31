@@ -16,6 +16,7 @@ import { execFileSync } from "node:child_process";
 import type { RunResult } from "./agent.js";
 import type { AgentConfig } from "./config.js";
 import {
+  allFailures,
   detectChecks,
   findRegressions,
   formatRegressions,
@@ -38,6 +39,16 @@ export interface TaskRunner {
 export interface SupervisorOptions {
   /** How many repair rounds to attempt after the first failure. */
   maxRepairAttempts: number;
+  /**
+   * Treat *any* failing check as actionable, not just ones the agent caused.
+   *
+   * The default (false) is right when the agent is changing working code: a
+   * suite that was already red is somebody else's bug, and chasing it wastes
+   * the repair budget. Set this when the task is explicitly to make a red suite
+   * green — otherwise the failure is written off as pre-existing and the loop
+   * never engages on exactly the work it was asked to do.
+   */
+  requireGreen?: boolean;
   onPhase?: (message: string) => void;
 }
 
@@ -54,6 +65,8 @@ export interface SupervisedResult {
   /** Grader files the agent modified. Non-empty means read the diff carefully. */
   graderFilesTouched: string[];
   verdict: "verified" | "unverified" | "regressed" | "no-checks";
+  /** Whether pre-existing failures were treated as the agent's problem. */
+  requiredGreen: boolean;
 }
 
 /**
@@ -113,6 +126,7 @@ export async function runSupervised(
   options: SupervisorOptions,
 ): Promise<SupervisedResult> {
   const phase = options.onPhase ?? (() => {});
+  const requiredGreen = options.requireGreen === true;
 
   // Frozen before the agent runs. Re-detecting later would let the agent pick
   // its own grader by editing package.json.
@@ -130,6 +144,7 @@ export async function runSupervised(
       preExisting: [],
       graderFilesTouched: [],
       verdict: "no-checks",
+      requiredGreen,
     };
   }
 
@@ -144,7 +159,10 @@ export async function runSupervised(
 
   const preExisting = preExistingFailures(baseline);
   if (preExisting.length > 0) {
-    phase(`already failing before this run: ${preExisting.join(", ")} — not counted against the agent`);
+    phase(
+      `already failing before this run: ${preExisting.join(", ")}`
+      + (requiredGreen ? " — must still be green to finish" : " — not counted against the agent"),
+    );
   }
 
   const filesBefore = new Set(changedFiles(config.root));
@@ -159,7 +177,7 @@ export async function runSupervised(
     const current = await verify(checks, config.root, {
       onCheckStart: (check) => phase(`check: ${check.name}`),
     });
-    outstanding = findRegressions(baseline, current);
+    outstanding = options.requireGreen ? allFailures(current) : findRegressions(baseline, current);
 
     if (outstanding.length === 0) {
       const touched = changedFiles(config.root).filter(
@@ -175,6 +193,7 @@ export async function runSupervised(
         preExisting,
         graderFilesTouched: touched,
         verdict: "verified",
+        requiredGreen,
       };
     }
 
@@ -191,6 +210,7 @@ export async function runSupervised(
         preExisting,
         graderFilesTouched: touched,
         verdict: "regressed",
+        requiredGreen,
       };
     }
 
@@ -198,7 +218,9 @@ export async function runSupervised(
     phase(`${outstanding.map((r) => r.name).join(", ")} failing — sending back for repair`);
     // Feeding the raw command output back matters: a summarised failure loses
     // the line numbers and stack frames that make the fix obvious.
-    await agent.run(formatRegressions(outstanding));
+    await agent.run(
+      formatRegressions(outstanding, options.requireGreen ? "must-be-green" : "regression"),
+    );
   }
 
   return {
@@ -210,6 +232,7 @@ export async function runSupervised(
     preExisting,
     graderFilesTouched: [],
     verdict: "unverified",
+    requiredGreen,
   };
 }
 
@@ -239,7 +262,11 @@ export function formatVerdict(result: SupervisedResult): string {
   }
 
   if (result.preExisting.length > 0) {
-    lines.push(`Already failing before this run (not caused by the agent): ${result.preExisting.join(", ")}.`);
+    lines.push(
+      result.requiredGreen
+        ? `Was already failing when the run started: ${result.preExisting.join(", ")}.`
+        : `Already failing before this run (not caused by the agent): ${result.preExisting.join(", ")}.`,
+    );
   }
   if (result.graderFilesTouched.length > 0) {
     lines.push(

@@ -24,6 +24,7 @@ import {
   type VerificationReport,
 } from "../src/verify.js";
 import { runSupervised, type TaskRunner } from "../src/supervisor.js";
+import { gradedEnv, STRIPPED_VARIABLES } from "../src/subprocess.js";
 import { DEFAULT_CONFIG, type AgentConfig } from "../src/config.js";
 import type { RunResult } from "../src/agent.js";
 import { CostMeter } from "../src/cost.js";
@@ -176,6 +177,49 @@ describe("running checks", () => {
     const result = await verify(checks, root, { failFast: false });
     assert.equal(result.results.length, 2);
     assert.equal(result.results[1]!.passed, true);
+  });
+});
+
+describe("graded subprocess environment", () => {
+  it("strips the variables that corrupt a child's exit code", () => {
+    const env = gradedEnv();
+    for (const name of STRIPPED_VARIABLES) {
+      assert.equal(env[name], undefined, `${name} must not reach a graded command`);
+    }
+    assert.equal(env["CI"], "1");
+    assert.equal(env["NO_COLOR"], "1");
+  });
+
+  it("leaves ordinary application configuration alone", () => {
+    process.env["DHOZZI_FIXTURE_VAR"] = "keep-me";
+    try {
+      assert.equal(gradedEnv()["DHOZZI_FIXTURE_VAR"], "keep-me");
+    } finally {
+      delete process.env["DHOZZI_FIXTURE_VAR"];
+    }
+  });
+
+  /**
+   * The bug this guards against: these tests run under `node --test`, which
+   * exports NODE_TEST_CONTEXT. A check that inherits it and itself runs
+   * `node --test` exits 0 even when its tests fail — so every graded result
+   * came back green. This asserts a genuinely failing suite still reports as
+   * failing from inside a test process.
+   */
+  it("reports a failing nested test suite as failing, even from inside a test run", async () => {
+    assert.ok(
+      process.env["NODE_TEST_CONTEXT"] !== undefined,
+      "precondition: this test must itself run under node --test for the check to be meaningful",
+    );
+
+    const root = project("nested-runner", {
+      "package.json": JSON.stringify({ name: "f", private: true, type: "module", scripts: { test: "node --test" } }),
+      "test/failing.test.js":
+        'import { test } from "node:test";\nimport assert from "node:assert/strict";\ntest("fails on purpose", () => { assert.equal(1, 2); });\n',
+    });
+
+    const result = await verify([{ name: "test", command: "npm test --silent" }], root);
+    assert.equal(result.passed, false, "a failing nested suite must not be graded as a pass");
   });
 });
 

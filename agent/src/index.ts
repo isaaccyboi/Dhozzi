@@ -61,6 +61,8 @@ OPTIONS
   VERIFICATION
       --no-verify           accept the agent's word instead of running the checks
       --repair-attempts <n> repair rounds after a failed check (default: ${DEFAULT_CONFIG.repairAttempts})
+      --require-green       treat an already-failing check as part of the task
+                            (default: only failures the agent introduced)
       --check               run the project's checks and exit; no agent, no cost
 
   COST AND CONTEXT
@@ -190,6 +192,9 @@ function parseArgs(argv: string[]): ParsedArgs {
         break;
       case "--no-verify":
         config.verify = false;
+        break;
+      case "--require-green":
+        config.requireGreen = true;
         break;
       case "--check":
         checkOnly = true;
@@ -349,6 +354,7 @@ async function executeTask(agent: Agent, config: AgentConfig, task: string): Pro
 
   const supervised: SupervisedResult = await runSupervised(agent, config, task, {
     maxRepairAttempts: config.repairAttempts,
+    requireGreen: config.requireGreen,
     onPhase: (message) => {
       if (config.json) {
         process.stdout.write(`${JSON.stringify({ type: "phase", message })}\n`);

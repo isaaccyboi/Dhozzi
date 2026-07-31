@@ -108,6 +108,44 @@ cost — useful for confirming what Dhozzi will grade you against.
 Projects with no detectable checks get an honest `Unverified` verdict rather
 than a false green.
 
+## Measuring it: the benchmark
+
+"Is this any good?" and "did that change help?" are not answerable by opinion.
+`npm run eval` runs the agent against fixture repositories with seeded bugs and
+grades each result by running the fixture's own test suite:
+
+```bash
+npm run eval -- --list                          # what the tasks are
+npm run eval                                    # run them all
+npm run eval -- --tasks 01-off-by-one           # one task while iterating
+npm run eval -- --model claude-sonnet-5         # compare models
+npm run eval -- --no-verify                     # measure what verification buys
+npm run eval -- --repeat 3                      # agents are stochastic
+```
+
+Six tasks, each starting red by construction: an off-by-one, a missing null
+guard, a rename across three files, an implement-from-spec, a lexicographic sort
+bug, and one that tests scope discipline by asking for a fix next to a function
+that must be left alone.
+
+Every task was checked in both directions before being committed — red at
+baseline, and green when a correct fix is applied. A task that passes without
+the agent doing anything measures nothing, and a task that cannot be solved
+poisons every score computed from it.
+
+**Tampering is not a pass.** Each task declares protected files (its tests, its
+`package.json`). They are hashed before and after, and any change downgrades the
+result to `TAMPER` no matter what the grader said. An agent that edits the test
+to match its code produces a green suite and a worthless result, so that outcome
+is named rather than counted.
+
+Read the output in this order: pass rate first, cost per pass second. Total
+spend on its own rewards a configuration that fails everything cheaply.
+
+Each attempt is a real billed agent session. Six tasks on the default model
+typically costs a few dollars; use `--tasks` or a cheaper `--model` while
+iterating.
+
 ## Spending less
 
 Every run ends with a line like:
@@ -212,9 +250,10 @@ effort, the agent drops that one feature, says so on stderr, and continues.
 ## Tests
 
 ```bash
-npm test        # 74 tests
+npm test        # 95 tests
 npm run build   # type-check and emit to dist/
 npm run agent -- --check    # run this project's checks, no model, no cost
+npm run eval                # benchmark the agent (costs money, needs a key)
 ```
 
 Three suites. `test/tools.test.ts` covers the tool layer and the trust boundary
@@ -230,9 +269,24 @@ broken, detected as a regression, fed back, and repaired — plus the cases that
 make the signal trustworthy (pre-existing failures excluded, grader commands
 frozen against a rewritten `package.json`, edited test files reported).
 
+`test/eval.test.ts` covers the benchmark itself with scripted stand-in agents:
+a real fix scores a pass, no work scores a failure, a plausible-but-wrong fix
+scores a failure, and three separate cheats — rewriting the test, neutering the
+grade command, deleting the test file — all score `TAMPER` rather than passing.
+It also pins that fixtures are never mutated and each attempt gets a fresh
+workspace.
+
+One bug worth naming, because it is the kind that makes a benchmark lie: Node
+exports `NODE_TEST_CONTEXT` under `node --test`, and a graded child process that
+inherits it **exits 0 even when its tests fail**. Every task scored as a pass
+until it was found. Graded subprocesses now run with that variable and other
+loader/instrumentation state stripped (`src/subprocess.ts`), and there is a
+regression test that runs a genuinely failing suite from inside a test process.
+
 **What is not covered:** no test here has called the live API. The request shape
 is asserted against a mock built to the documented wire format, not against
-Anthropic's servers, and the agent's actual coding ability is entirely
-unmeasured — verification tells you a change did not break the suite, which is
-not the same as the change being good. The first real run is the first real
-test: do it on a branch, with the default approval mode, and read the diff.
+Anthropic's servers, and no benchmark number has been produced yet — running the
+suite needs a key and costs money, so the pass rate is currently unknown rather
+than good. Verification tells you a change did not break the suite, which is not
+the same as the change being good. The first real run is the first real test: do
+it on a branch, with the default approval mode, and read the diff.

@@ -139,6 +139,12 @@ export interface AgentConfig {
   verify: boolean;
   /** Repair rounds attempted after the first verification failure. */
   repairAttempts: number;
+  /**
+   * Treat an already-failing check as part of the task rather than as somebody
+   * else's bug. Off by default so the agent does not chase failures it did not
+   * cause; on when the task is explicitly to get a red suite green.
+   */
+  requireGreen: boolean;
 }
 
 export type ApprovalMode = "ask" | "auto" | "readonly";
@@ -157,6 +163,7 @@ export const DEFAULT_CONFIG: Omit<AgentConfig, "root"> = {
   json: false,
   verify: true,
   repairAttempts: 3,
+  requireGreen: false,
 };
 
 /** Hard caps that keep a single tool result from blowing up the context window. */

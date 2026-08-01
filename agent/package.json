@@ -1,14 +1,15 @@
 {
-  "name": "dhozzi-agent",
-  "version": "2.5.0",
+  "name": "chai-kan",
+  "version": "7.74.0",
   "private": true,
   "type": "module",
-  "description": "Dhozzi 2.5 — a verifying, cost-aware terminal coding agent harness built on the Claude API. Not a model.",
+  "description": "Chai-Kan 7.74 by Dhozzi — a verifying, cost-aware coding agent harness built on the Claude API. Not a model.",
   "bin": {
-    "dhozzi-agent": "./dist/index.js"
+    "chai-kan": "./dist/index.js"
   },
   "scripts": {
     "agent": "tsx src/index.ts",
+    "web": "tsx src/web-cli.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",

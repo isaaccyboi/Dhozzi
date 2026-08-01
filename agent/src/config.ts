@@ -7,12 +7,15 @@
 
 /**
  * Product name and version of the *harness* — the loop, tools, verifier, and
- * safety layer in this directory. It is not a model, and there is no "Dhozzi"
+ * safety layer in this directory. It is not a model, and there is no "Chai-Kan"
  * model behind it: every request is served by whichever Claude model `--model`
  * selects. The banner prints both so the distinction is never ambiguous.
  */
-export const HARNESS_NAME = "Dhozzi";
-export const HARNESS_VERSION = "2.5";
+export const HARNESS_VENDOR = "Dhozzi";
+export const HARNESS_NAME = "Chai-Kan";
+export const HARNESS_VERSION = "7.74";
+/** Compact form for tab titles, banners, and anywhere the full name is noise. */
+export const HARNESS_SHORT = "CK-7.74";
 
 export interface ModelPricing {
   /** USD per million input tokens. */

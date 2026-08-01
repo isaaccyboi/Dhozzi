@@ -1,16 +1,18 @@
-# Dhozzi 2.5
+# Chai-Kan 7.74
 
-A terminal coding agent that reads, searches, edits, and runs commands in a
-repository, then **holds its own work to the project's tests before calling it
-done**. Built on the Claude API, and designed around three things: verified
-output, low cost per task, and no ability to touch anything outside the project
-root.
+*by Dhozzi. Short form: CK-7.74.*
+
+A coding agent that reads, searches, edits, and runs commands in a repository,
+then **holds its own work to the project's tests before calling it done**. Use
+it from the terminal or from a browser. Built on the Claude API, and designed
+around three things: verified output, low cost per task, and no ability to touch
+anything outside the project root.
 
 ## What this is, and what it is not
 
-**Dhozzi 2.5 is a harness, not a model.** The harness is the agent loop, the
+**Chai-Kan 7.74 is a harness, not a model.** The harness is the agent loop, the
 tools, the verifier, the context management, and the safety layer. Every request
-is served by whichever Claude model `--model` names. There is no Dhozzi model,
+is served by whichever Claude model `--model` names. There is no Chai-Kan model,
 and the version refers to this directory, not to any trained weights.
 
 That distinction matters because harness quality and model quality are different
@@ -30,16 +32,56 @@ committed to git is a leaked secret rather than a feature.
 
 ## Setup
 
+You need [Node.js](https://nodejs.org) 20 or newer. Then, from a terminal:
+
 ```bash
 cd agent
 npm install
 export ANTHROPIC_API_KEY=sk-ant-...   # from console.anthropic.com
 ```
 
+On Windows, `set ANTHROPIC_API_KEY=sk-ant-...` in Command Prompt, or
+`$env:ANTHROPIC_API_KEY="sk-ant-..."` in PowerShell.
+
 An `ant auth login` profile works too — the SDK finds it automatically when no
 environment variable is set.
 
-## Usage
+## The web interface
+
+```bash
+npm run web            # then open http://localhost:4174
+```
+
+A chat page for the same agent, for when a terminal is not where you want to be.
+It streams the model's text as it arrives, lists each tool call as it happens,
+shows verification phases and the final verdict, and keeps a running token and
+dollar count in the footer.
+
+<!-- Screenshots live outside the repo; run `npm run web` to see it. -->
+
+Everything is one process and one file of markup: no build step, no bundler, no
+framework, and nothing loaded from a CDN. `npm run web -- --help` lists the
+flags — `--port`, `--root`, `--model`, `--effort`, `--build`, `--no-verify`.
+
+**Two modes, chosen in the header.** *Read* can inspect and explain but cannot
+change anything. *Build* edits files and runs commands, and it pre-approves them
+rather than prompting — the terminal's per-action approval needs a TTY to answer
+it, and a browser is not one. That is the honest tradeoff, so Build asks for
+confirmation once when you switch into it, and the footer says so while it is
+on. Run it on a branch you can throw away.
+
+**It binds to `127.0.0.1`, and that matters.** Anyone who can load the page can
+make the agent run shell commands in your project — there is no login in front
+of it. The server also rejects requests whose `Host` header is not loopback
+(which is what stops a hostile site from reaching it by pointing its own DNS at
+your machine) and refuses cross-origin requests outright. `--host` will bind
+somewhere else and prints a warning when you do.
+
+A session keeps one agent alive across messages, so history — and the prompt
+cache — survive the whole conversation. Changing the model or the mode starts a
+fresh one, and the page tells you when it did.
+
+## Usage from the terminal
 
 ```bash
 # one task, then exit
@@ -64,7 +106,7 @@ current prices.
 ## Verification: correct it if it's wrong, accept it if it's right
 
 An agent grading its own work is worth very little — it reports success because
-it believes it succeeded. So Dhozzi does not take its word for it. After the
+it believes it succeeded. So Chai-Kan does not take its word for it. After the
 agent says it is done, the project's own type checker, linter, and test suite
 run as ordinary subprocesses, and a failure is sent straight back:
 
@@ -103,7 +145,7 @@ pass" and "delete the failing test" look identical from the inside.
 Verification is on by default, skipped in `--readonly` (nothing changed, so
 there is nothing to grade), and controlled by `--no-verify` and
 `--repair-attempts <n>`. `--check` runs the checks alone, with no model and no
-cost — useful for confirming what Dhozzi will grade you against.
+cost — useful for confirming what Chai-Kan will grade you against.
 
 Projects with no detectable checks get an honest `Unverified` verdict rather
 than a false green.
@@ -250,13 +292,13 @@ effort, the agent drops that one feature, says so on stderr, and continues.
 ## Tests
 
 ```bash
-npm test        # 95 tests
+npm test        # 131 tests
 npm run build   # type-check and emit to dist/
 npm run agent -- --check    # run this project's checks, no model, no cost
 npm run eval                # benchmark the agent (costs money, needs a key)
 ```
 
-Three suites. `test/tools.test.ts` covers the tool layer and the trust boundary
+Four suites. `test/tools.test.ts` covers the tool layer and the trust boundary
 — path confinement including symlink escapes, staleness detection, edit
 ambiguity, approval modes, command gating, timeouts, and the cost arithmetic.
 `test/loop.test.ts` runs the real agent loop against a mock Messages endpoint
@@ -276,6 +318,17 @@ grade command, deleting the test file — all score `TAMPER` rather than passing
 It also pins that fixtures are never mutated and each attempt gets a fresh
 workspace.
 
+`test/web.test.ts` drives the web server over real HTTP with an injected agent.
+It pins the things that would be expensive to discover in production: a request
+with a rebound `Host` header and a cross-origin request are both refused while
+the honest equivalents are served; read mode really does hand the agent a
+`readonly` config with nothing to verify; build mode pre-approves rather than
+falling back to a prompt no browser can answer; a failing check reaches the page
+as a repair round and then a verdict, and an unrepaired one is reported as
+`regressed` rather than as success. It also pins that a session reuses one agent
+across messages — a second agent would re-send the whole history uncached — and
+that changing the model or mode starts a fresh conversation and says so.
+
 One bug worth naming, because it is the kind that makes a benchmark lie: Node
 exports `NODE_TEST_CONTEXT` under `node --test`, and a graded child process that
 inherits it **exits 0 even when its tests fail**. Every task scored as a pass
@@ -288,5 +341,8 @@ is asserted against a mock built to the documented wire format, not against
 Anthropic's servers, and no benchmark number has been produced yet — running the
 suite needs a key and costs money, so the pass rate is currently unknown rather
 than good. Verification tells you a change did not break the suite, which is not
-the same as the change being good. The first real run is the first real test: do
-it on a branch, with the default approval mode, and read the diff.
+the same as the change being good. The web tests drive the server but not the
+browser: the page's own JavaScript — the markdown renderer, the streaming
+reader, the mode toggle — has been exercised by hand and by screenshot, not by
+an automated test. The first real run is the first real test: do it on a branch,
+in Read mode first, and read the diff before you keep anything.

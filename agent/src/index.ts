@@ -2,9 +2,9 @@
 /**
  * CLI entry point.
  *
- * `dhozzi-agent "task"` runs one task to completion; with no task it opens a
- * REPL that keeps conversation history (and therefore the prompt cache) across
- * turns.
+ * `npm run agent -- "task"` runs one task to completion; with no task it opens
+ * a REPL that keeps conversation history (and therefore the prompt cache)
+ * across turns. `npm run web` puts the same agent behind a browser page.
  */
 
 import * as path from "node:path";
@@ -42,8 +42,9 @@ and safety layer. It is not a model. Every request is served by the Claude model
 named in --model, and the harness is what decides how well that model is used.
 
 USAGE
-  dhozzi-agent [options] "task"        run one task and exit
-  dhozzi-agent [options]               interactive session
+  npm run agent -- [options] "task"    run one task and exit
+  npm run agent -- [options]           interactive session
+  npm run web                          chat interface in a browser
 
 OPTIONS
   -m, --model <id>          model to drive the agent (default: ${DEFAULT_CONFIG.model})

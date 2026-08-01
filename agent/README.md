@@ -185,8 +185,33 @@ Read the output in this order: pass rate first, cost per pass second. Total
 spend on its own rewards a configuration that fails everything cheaply.
 
 Each attempt is a real billed agent session. Six tasks on the default model
-typically costs a few dollars; use `--tasks` or a cheaper `--model` while
-iterating.
+costs about $0.33; use `--tasks` or a cheaper `--model` while iterating.
+
+### First results (2026-08-01)
+
+| Model | Attempts | Pass rate | Cost per pass | Wall clock |
+|---|---|---|---|---|
+| Opus 5 | 6 | **6/6 (100%)** | $0.0552 | 133s |
+| Sonnet 5 | 18 (×3) | **18/18 (100%)** | **$0.0126** | 204s |
+| Haiku 4.5 | 18 (×3) | **18/18 (100%)** | $0.0224 | 202s |
+
+No attempt scored `TAMPER`: nothing weakened a test or edited a grader to get
+green.
+
+Two things follow, and the second is the useful one.
+
+**The suite is at its ceiling.** Three models spanning a 5x price range all
+score 100%, so this benchmark can no longer tell them apart — or tell a harness
+improvement from a regression. Every number above is real, and none of them can
+currently be moved. Harder tasks are the prerequisite for any further tuning;
+until they exist, treat 100% as "these six tasks are too easy" rather than as a
+quality ceiling that has been reached.
+
+**The cheapest model is not the cheapest option.** Haiku 4.5 lists at half
+Sonnet's token price and still costs ~1.8x more per pass, because it spends more
+turns and more tokens reaching the same answer. Sonnet 5 is the cost winner at
+$0.0126 per pass — 4.4x cheaper than Opus on identical results. This is exactly
+why the output ranks cost *per pass* over total spend.
 
 ## Spending less
 
@@ -346,12 +371,14 @@ until it was found. Graded subprocesses now run with that variable and other
 loader/instrumentation state stripped (`src/subprocess.ts`), and there is a
 regression test that runs a genuinely failing suite from inside a test process.
 
-**What is not covered:** no test here has called the live API. The request shape
-is asserted against a mock built to the documented wire format, not against
-Anthropic's servers, and no benchmark number has been produced yet — running the
-suite needs a key and costs money, so the pass rate is currently unknown rather
-than good. Verification tells you a change did not break the suite, which is not
-the same as the change being good. The web tests drive the server but not the
+**What is not covered:** no test here has called the live API — the request
+shape is asserted against a mock built to the documented wire format, not
+against Anthropic's servers. The benchmark *has* now been run against the real
+API (see the table above), so the pass rate is no longer unknown; what remains
+unknown is how far it generalises, because 42 attempts across six small seeded
+bugs all passed and a suite at its ceiling measures nothing further.
+Verification tells you a change did not break the suite, which is not the same
+as the change being good. The web tests drive the server but not the
 browser: the page's own JavaScript — the markdown renderer, the streaming
 reader, the mode toggle — has been exercised by hand and by screenshot, not by
 an automated test. The first real run is the first real test: do it on a branch,

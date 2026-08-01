@@ -16,6 +16,7 @@ import {
   HARNESS_VENDOR,
   HARNESS_VERSION,
   PRICING,
+  isKnownModel,
   type Effort,
 } from "./config.js";
 import { startServer } from "./web/server.js";
@@ -105,7 +106,7 @@ function parse(argv: string[]): Options | "help" {
       case "-m":
       case "--model": {
         const value = next(i, arg);
-        if (!(value in PRICING)) {
+        if (!isKnownModel(value)) {
           throw new Error(`Unknown model "${value}". Known: ${Object.keys(PRICING).join(", ")}`);
         }
         options.settings.model = value;

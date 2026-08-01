@@ -19,7 +19,7 @@ import {
   EFFORTS,
   HARNESS_NAME,
   HARNESS_VERSION,
-  PRICING,
+  isKnownModel,
   type Effort,
 } from "./config.js";
 
@@ -233,7 +233,7 @@ async function main(): Promise<number> {
       paint.dim("note: ANTHROPIC_API_KEY is not set; falling back to an `ant auth login` profile if one exists."),
     );
   }
-  if (!PRICING[options.evalConfig.model]) {
+  if (!isKnownModel(options.evalConfig.model)) {
     console.error(paint.yellow(`warning: no price on file for "${options.evalConfig.model}"; cost will read as —`));
   }
 

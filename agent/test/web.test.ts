@@ -678,6 +678,21 @@ describe("conversation continuity", () => {
       await harness.close();
     }
   });
+
+  it("forwards a dated snapshot rather than silently substituting the default", async () => {
+    // The dated id is the canonical one. Validating it by exact catalogue key
+    // sent it down the unknown-model path above, so asking for Haiku quietly
+    // ran — and billed — whatever the default model was.
+    const harness = await serve(project("continuity-dated", { "a.txt": "" }), [{ turn() {} }]);
+    try {
+      const { sessionId } = await newSession(harness);
+      await chat(harness, sessionId, "go", { ...SETTINGS, model: "claude-haiku-4-5-20251001" });
+      assert.equal(harness.record.configs[0]!.model, "claude-haiku-4-5-20251001");
+      assert.notEqual(harness.record.configs[0]!.model, DEFAULT_CONFIG.model);
+    } finally {
+      await harness.close();
+    }
+  });
 });
 
 describe("session store", () => {

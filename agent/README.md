@@ -272,6 +272,16 @@ the 4.6+ generation, so selecting Haiku 4.5 drops both rather than sending
 parameters it would reject with a 400. A capability table covers the known
 models; anything unknown gets the modern surface.
 
+**Dated snapshots resolve to their family.** The API accepts both
+`claude-haiku-4-5` and `claude-haiku-4-5-20251001`, and the dated form is the one
+the docs publish and the one people paste. Every table here is keyed by family
+and resolved through a trailing-date strip, because exact-string keying failed
+three ways at once and all of them were quiet: the model went unpriced (cost and
+cost-per-pass read `—`), it missed the capability table and so was handed the
+modern surface it 400s on, and `--model` validation rejected it — which in the
+web layer meant silently falling back to the default and billing Opus rates for
+a run asked to be Haiku.
+
 **Features degrade instead of failing.** If your account or model turns out not
 to accept task budgets, server-side fallback, context editing, thinking, or
 effort, the agent drops that one feature, says so on stderr, and continues.
@@ -292,7 +302,7 @@ effort, the agent drops that one feature, says so on stderr, and continues.
 ## Tests
 
 ```bash
-npm test        # 131 tests
+npm test        # 138 tests
 npm run build   # type-check and emit to dist/
 npm run agent -- --check    # run this project's checks, no model, no cost
 npm run eval                # benchmark the agent (costs money, needs a key)

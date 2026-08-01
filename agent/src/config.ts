@@ -54,6 +54,44 @@ export const PRICING: Record<string, ModelPricing> = {
 
 export const DEFAULT_MODEL = "claude-opus-5";
 
+/**
+ * Map a model id onto its catalogue key.
+ *
+ * The API accepts both a family alias (`claude-haiku-4-5`) and a dated snapshot
+ * (`claude-haiku-4-5-20251001`), and the dated form is the one the docs publish
+ * and the one people paste. Keying the catalogue by exact string alone meant the
+ * canonical id missed every table in this file, and each miss failed differently
+ * and quietly:
+ *
+ *  - no price, so cost and cost-per-pass read `—` for a model we do price;
+ *  - no capability entry, so the unknown-model fallback handed Haiku 4.5 the
+ *    modern surface — thinking, effort, task budgets — which it 400s on, the
+ *    exact case the fallback comment claims to exclude;
+ *  - `in PRICING` validation rejected it, and the web layer silently swapped in
+ *    the default model, billing Opus rates for a run the user asked to be Haiku.
+ *
+ * So resolution is: exact key first, then the same id with a trailing `-YYYYMMDD`
+ * removed. Unknown ids still resolve to `undefined` and keep their old behaviour.
+ */
+const SNAPSHOT_SUFFIX = /-\d{8}$/;
+
+export function resolveModelId(model: string): string | undefined {
+  if (model in PRICING) return model;
+  const family = model.replace(SNAPSHOT_SUFFIX, "");
+  return family !== model && family in PRICING ? family : undefined;
+}
+
+/** Catalogue price for a model id, accepting dated snapshots. */
+export function pricingFor(model: string): ModelPricing | undefined {
+  const key = resolveModelId(model);
+  return key === undefined ? undefined : PRICING[key];
+}
+
+/** Whether this id names a model in the catalogue, dated snapshots included. */
+export function isKnownModel(model: string): boolean {
+  return resolveModelId(model) !== undefined;
+}
+
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
 export const EFFORTS: readonly Effort[] = ["low", "medium", "high", "xhigh", "max"];
@@ -102,9 +140,14 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
  * Unknown model ids get the modern surface, because every current model except
  * Haiku 4.5 supports it. Anything that still 400s is caught by the runtime
  * degradation path in the agent loop.
+ *
+ * A dated snapshot resolves to its family first, so `claude-haiku-4-5-20251001`
+ * gets Haiku's restricted surface rather than falling through to `MODERN` and
+ * spending three round-trips discovering it by 400.
  */
 export function capabilitiesFor(model: string): ModelCapabilities {
-  return MODEL_CAPABILITIES[model] ?? MODERN;
+  const key = resolveModelId(model) ?? model;
+  return MODEL_CAPABILITIES[key] ?? MODERN;
 }
 
 /** Beta features this agent can use. Each is independently degradable. */

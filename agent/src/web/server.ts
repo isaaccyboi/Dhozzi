@@ -29,6 +29,7 @@ import {
   HARNESS_VENDOR,
   HARNESS_VERSION,
   PRICING,
+  isKnownModel,
   type Effort,
 } from "../config.js";
 import {
@@ -245,7 +246,7 @@ function guard(req: http.IncomingMessage, boundHost: string): string | null {
 
 function coerceSettings(raw: unknown, fallback: SessionSettings): SessionSettings {
   const input = (raw ?? {}) as Record<string, unknown>;
-  const model = typeof input["model"] === "string" && input["model"] in PRICING
+  const model = typeof input["model"] === "string" && isKnownModel(input["model"])
     ? (input["model"] as string)
     : fallback.model;
   const effort = EFFORTS.includes(input["effort"] as Effort)

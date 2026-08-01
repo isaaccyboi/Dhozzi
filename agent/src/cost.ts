@@ -6,7 +6,7 @@
  * that works, except on the invoice. `cacheHitRate` surfaces it immediately.
  */
 
-import { CACHE_READ_MULTIPLIER, CACHE_WRITE_MULTIPLIER, PRICING } from "./config.js";
+import { CACHE_READ_MULTIPLIER, CACHE_WRITE_MULTIPLIER, pricingFor } from "./config.js";
 
 export interface UsageLike {
   input_tokens?: number | null;
@@ -53,7 +53,7 @@ export class CostMeter {
 
   /** Estimated spend in USD. Returns null for a model with no known price. */
   get costUsd(): number | null {
-    const price = PRICING[this.model];
+    const price = pricingFor(this.model);
     if (!price) return null;
     const billableInput =
       this.uncachedInput
@@ -67,7 +67,7 @@ export class CostMeter {
    * is stated rather than implied.
    */
   get costWithoutCachingUsd(): number | null {
-    const price = PRICING[this.model];
+    const price = pricingFor(this.model);
     if (!price) return null;
     return (this.totalInput * price.input + this.output * price.output) / 1_000_000;
   }

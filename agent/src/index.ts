@@ -20,6 +20,7 @@ import {
   HARNESS_NAME,
   HARNESS_VERSION,
   PRICING,
+  isKnownModel,
   type AgentConfig,
   type ApprovalMode,
   type Effort,
@@ -483,7 +484,7 @@ async function main(): Promise<number> {
   if (parsed.checkOnly) {
     return await checkOnly(config);
   }
-  if (!PRICING[config.model]) {
+  if (!isKnownModel(config.model)) {
     console.error(
       c.yellow(`warning: no price on file for "${config.model}"; cost will not be estimated.`),
     );

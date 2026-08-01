@@ -16,7 +16,13 @@ import * as path from "node:path";
 import { classifyCommand, resolveInRoot, SafetyError } from "../src/safety.js";
 import { TOOLS_BY_NAME, type ToolContext } from "../src/tools.js";
 import { CostMeter } from "../src/cost.js";
-import { DEFAULT_CONFIG, type AgentConfig } from "../src/config.js";
+import {
+  DEFAULT_CONFIG,
+  capabilitiesFor,
+  isKnownModel,
+  resolveModelId,
+  type AgentConfig,
+} from "../src/config.js";
 
 let root: string;
 let outside: string;
@@ -354,5 +360,57 @@ describe("cost meter", () => {
     const meter = new CostMeter("claude-opus-5");
     assert.equal(meter.cacheHitRate, 0);
     assert.equal(meter.costUsd, 0);
+  });
+
+  it("prices a dated snapshot at its family rate", () => {
+    // The API takes both `claude-haiku-4-5` and `claude-haiku-4-5-20251001`,
+    // and the dated form is what the docs publish. Keying pricing by exact
+    // string alone left the canonical id unpriced, so cost and cost-per-pass
+    // read `—` for a model this harness does price.
+    const dated = new CostMeter("claude-haiku-4-5-20251001");
+    const family = new CostMeter("claude-haiku-4-5");
+    const usage = { input_tokens: 1_000_000, output_tokens: 1_000_000 };
+    dated.add(usage);
+    family.add(usage);
+    assert.equal(dated.costUsd, family.costUsd);
+    assert.equal(dated.costUsd, 6); // 1 in + 5 out
+  });
+});
+
+describe("model id resolution", () => {
+  it("resolves a dated snapshot to its family, and leaves exact ids alone", () => {
+    assert.equal(resolveModelId("claude-haiku-4-5-20251001"), "claude-haiku-4-5");
+    assert.equal(resolveModelId("claude-opus-5"), "claude-opus-5");
+  });
+
+  it("does not invent a family for an unknown model", () => {
+    assert.equal(resolveModelId("some-unlisted-model-20251001"), undefined);
+    assert.equal(resolveModelId("some-unlisted-model"), undefined);
+    assert.equal(isKnownModel("some-unlisted-model"), false);
+  });
+
+  it("accepts a dated snapshot as a known model", () => {
+    // Every `--model` validator gates on this. Rejecting the canonical id made
+    // the CLIs refuse a legitimate model, and made the web layer silently fall
+    // back to the default — billing Opus rates for a run asked to be Haiku.
+    assert.ok(isKnownModel("claude-haiku-4-5-20251001"));
+    assert.ok(isKnownModel("claude-haiku-4-5"));
+  });
+
+  it("gives a dated Haiku 4.5 the restricted request surface", () => {
+    // This is the one that actually 400s. Haiku 4.5 accepts neither adaptive
+    // thinking nor `effort`, and the unknown-model fallback hands out both —
+    // so the dated id fell through to exactly the surface it rejects.
+    const dated = capabilitiesFor("claude-haiku-4-5-20251001");
+    assert.equal(dated.adaptiveThinking, false);
+    assert.equal(dated.effort, false);
+    assert.equal(dated.taskBudget, false);
+    assert.deepEqual(dated, capabilitiesFor("claude-haiku-4-5"));
+  });
+
+  it("still hands unknown models the modern surface", () => {
+    const unknown = capabilitiesFor("claude-something-new-20260101");
+    assert.equal(unknown.adaptiveThinking, true);
+    assert.equal(unknown.effort, true);
   });
 });

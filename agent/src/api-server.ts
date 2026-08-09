@@ -1,36 +1,45 @@
 /**
- * Chai-Kan 7.74 API server for Railway deployment.
+ * Chai-Kan 7.74 API server.
  *
- * Exposes the harness as a simple REST API:
- * POST /solve — submit a task, get results back
+ * Exposes the harness as a REST API:
+ *   POST /solve   — submit a task, get a verified result back
+ *   GET  /health  — liveness probe
+ *
+ * Requests go through the supervisor rather than a bare agent, because the
+ * verification loop is the product. A bare `agent.run()` would return whatever
+ * the model claimed it did, which is the thing this harness exists not to do.
  */
 
-import express, { Request, Response } from "express";
+import express, { type Request, type Response } from "express";
 import * as path from "node:path";
-import { Agent, type RunResult } from "./agent.js";
-import { DEFAULT_CONFIG, isKnownModel, type AgentConfig } from "./config.js";
-import { detectChecks, verify } from "./verify.js";
+import { Agent } from "./agent.js";
+import { DEFAULT_CONFIG, isKnownModel, EFFORTS, type AgentConfig, type Effort } from "./config.js";
+import { runSupervised } from "./supervisor.js";
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = Number(process.env.PORT) || 8080;
 const PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
 
 app.use(express.json());
 
 interface SolveRequest {
-  task: string;
-  model?: string;
-  effort?: "low" | "medium" | "high" | "xhigh" | "max";
-  projectRoot?: string;
+  task?: unknown;
+  model?: unknown;
+  effort?: unknown;
+  projectRoot?: unknown;
 }
 
 interface SolveResponse {
   success: boolean;
   task: string;
   result?: {
+    /** verified | unverified | regressed | no-checks */
     verdict: string;
     output: string;
     turns: number;
+    stoppedBecause: string;
+    repairAttempts: number;
+    checks: { name: string; passed: boolean }[];
     cost: string;
     cacheHitRate: string;
   };
@@ -38,85 +47,89 @@ interface SolveResponse {
 }
 
 app.post("/solve", async (req: Request, res: Response<SolveResponse>) => {
+  const body = (req.body ?? {}) as SolveRequest;
+  const task = typeof body.task === "string" ? body.task : "";
+
   try {
-    const { task, model = DEFAULT_CONFIG.model, effort = DEFAULT_CONFIG.effort, projectRoot = PROJECT_ROOT } = req.body as SolveRequest;
-
-    if (!task || typeof task !== "string" || !task.trim()) {
-      res.status(400).json({
-        success: false,
-        task: "",
-        error: "Missing or invalid 'task' field",
-      });
+    if (!task.trim()) {
+      res.status(400).json({ success: false, task: "", error: "Missing or invalid 'task' field" });
       return;
     }
 
+    const model = typeof body.model === "string" ? body.model : DEFAULT_CONFIG.model;
     if (!isKnownModel(model)) {
-      res.status(400).json({
-        success: false,
-        task,
-        error: `Unknown model: ${model}`,
-      });
+      res.status(400).json({ success: false, task, error: `Unknown model: ${model}` });
       return;
     }
+
+    const effort = typeof body.effort === "string" ? body.effort : DEFAULT_CONFIG.effort;
+    if (!EFFORTS.includes(effort as Effort)) {
+      res.status(400).json({ success: false, task, error: `Unknown effort: ${effort}` });
+      return;
+    }
+
+    const projectRoot = typeof body.projectRoot === "string" ? body.projectRoot : PROJECT_ROOT;
 
     const config: AgentConfig = {
       ...DEFAULT_CONFIG,
       model,
-      effort,
+      effort: effort as Effort,
       root: path.resolve(projectRoot),
+      // Unattended: there is no operator to answer a prompt, so mutating tools
+      // run without one. The path confinement in tools.ts is what keeps this
+      // honest, not the approval mode.
       approval: "auto",
       verify: true,
     };
 
-    const agent = new Agent(config);
+    // Streamed assistant text, accumulated so the caller gets the prose the
+    // agent produced rather than only its final message.
     let output = "";
-    let turns = 0;
-    let finalCost = "0.00";
-    let cacheHitRate = "0%";
-
-    agent.on("text", (text) => {
-      output += text;
+    const agent = new Agent(config, {
+      onText: (delta) => {
+        output += delta;
+      },
     });
 
-    agent.on("cost", (meter) => {
-      finalCost = meter.costUsd.toFixed(4);
-      const inputTokens = meter.cacheReadTokens + meter.inputTokens;
-      if (inputTokens > 0) {
-        const cacheRatio = meter.cacheReadTokens / inputTokens;
-        cacheHitRate = `${(cacheRatio * 100).toFixed(0)}%`;
-      }
+    const supervised = await runSupervised(agent, config, task, {
+      maxRepairAttempts: config.repairAttempts,
+      requireGreen: config.requireGreen,
     });
 
-    const result = (await agent.run(task)) as RunResult & { cost: { costUsd: number; cacheHitRate: string } };
-    turns = result.turns || 0;
+    const meter = agent.costMeter;
+    const costUsd = meter.costUsd;
 
     res.json({
-      success: true,
+      // A run that regressed the suite is not a success, regardless of what
+      // the model said about it.
+      success: supervised.verdict === "verified" || supervised.verdict === "no-checks",
       task,
       result: {
-        verdict: result.verdict || "completed",
-        output,
-        turns,
-        cost: `$${finalCost}`,
-        cacheHitRate,
+        verdict: supervised.verdict,
+        output: output || supervised.run.finalText,
+        turns: supervised.run.turns,
+        stoppedBecause: supervised.run.stoppedBecause,
+        repairAttempts: supervised.repairAttempts,
+        checks: (supervised.final ?? supervised.baseline)?.results.map((r) => ({
+          name: r.name,
+          passed: r.passed,
+        })) ?? [],
+        cost: costUsd === null ? "unpriced" : `$${costUsd.toFixed(4)}`,
+        cacheHitRate: `${(meter.cacheHitRate * 100).toFixed(0)}%`,
       },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    res.status(500).json({
-      success: false,
-      task: (req.body as SolveRequest).task || "",
-      error: message,
-    });
+    res.status(500).json({ success: false, task, error: message });
   }
 });
 
-app.get("/health", (req: Request, res: Response) => {
+app.get("/health", (_req: Request, res: Response) => {
   res.json({ status: "ok", version: "7.74" });
 });
 
 app.listen(PORT, () => {
   console.log(`Chai-Kan 7.74 API server listening on port ${PORT}`);
-  console.log(`POST /solve — submit a task`);
-  console.log(`GET /health — health check`);
+  console.log("POST /solve  — submit a task");
+  console.log("GET  /health — health check");
 });

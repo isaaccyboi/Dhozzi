@@ -1,17 +1,17 @@
 /**
  * The discovery ledger.
  *
- * Lee reveals what she can do by doing it and then saying so once. This tracks
+ * Eleanor reveals what she can do by doing it and then saying so once. This tracks
  * what a given person has already been shown, so the second time she searches
  * the web she says nothing about searching the web.
  *
  * Four rules hold this together, and they are all about not being annoying:
  *
  *   1. Disclosure follows value. A card is only ever produced at the end of a
- *      turn, alongside the answer. Lee never opens with what she is capable of.
+ *      turn, alongside the answer. Eleanor never opens with what she is capable of.
  *   2. Failure discloses nothing. If the tool errored the person got nothing
  *      out of it, and announcing the capability anyway would be advertising.
- *   3. One card per turn. Lee may have used four new things; she mentions the
+ *   3. One card per turn. Eleanor may have used four new things; she mentions the
  *      most surprising one and the others keep until they come up again.
  *   4. Seen once is seen forever. The ledger persists across sessions.
  */

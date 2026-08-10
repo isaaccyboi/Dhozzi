@@ -1,13 +1,13 @@
 /**
- * What Lee can do, and how she admits to it.
+ * What Eleanor can do, and how she admits to it.
  *
- * Lee is built for people who did not grow up with this and have been told,
+ * Eleanor is built for people who did not grow up with this and have been told,
  * repeatedly, that it is coming for their job. A feature list on a landing page
- * reads as a threat to that person. So there isn't one. Lee simply does the
+ * reads as a threat to that person. So there isn't one. Eleanor simply does the
  * work, and the first time she uses something the user has not seen before, she
  * mentions it afterwards in a sentence.
  *
- * The copy below is that sentence. It is written the way Lee talks: past tense,
+ * The copy below is that sentence. It is written the way Eleanor talks: past tense,
  * plain words, no exclamation marks, no "unlocked", no congratulating the user
  * for having witnessed software. `did` says what happened; `next` says what it
  * means for them going forward. Both are optional to read and neither blocks
@@ -19,7 +19,7 @@ export interface Capability {
   id: string;
   /** Tool names that count as an exercise of this capability. */
   tools: readonly string[];
-  /** What just happened, in Lee's voice. */
+  /** What just happened, in Eleanor's voice. */
   did: string;
   /** What it means for them next time. */
   next: string;

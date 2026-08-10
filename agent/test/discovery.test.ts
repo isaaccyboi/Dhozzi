@@ -1,7 +1,7 @@
 /**
  * Tests for the discovery ledger.
  *
- * The properties worth defending are the ones that keep Lee from behaving like
+ * The properties worth defending are the ones that keep Eleanor from behaving like
  * every other product this person has been sold: she must not announce a
  * capability before it has produced anything, must not announce one that
  * failed, must not announce four at once, and must not announce the same one
@@ -11,8 +11,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { DiscoveryLedger } from "../src/lee/discovery.js";
-import { CAPABILITIES, capabilityForTool } from "../src/lee/capabilities.js";
+import { DiscoveryLedger } from "../src/eleanor/discovery.js";
+import { CAPABILITIES, capabilityForTool } from "../src/eleanor/capabilities.js";
 
 describe("capability catalogue", () => {
   it("maps every declared tool back to its capability", () => {
@@ -33,7 +33,7 @@ describe("capability catalogue", () => {
     assert.equal(new Set(tools).size, tools.length);
   });
 
-  it("writes card copy in Lee's voice", () => {
+  it("writes card copy in Eleanor's voice", () => {
     // The banned words are the ones that make her sound like a brochure. A
     // failure here means someone edited the copy without reading the persona.
     const banned = /\b(unlock|empower|seamless|journey|leverage|supercharge|exciting)\b/i;

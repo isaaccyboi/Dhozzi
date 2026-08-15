@@ -17,6 +17,7 @@ import type { AddressInfo } from "node:net";
 import { Agent, type AgentPersona } from "../src/agent.js";
 import { DEFAULT_CONFIG, type AgentConfig } from "../src/config.js";
 import { ELEANOR_TOOLS } from "../src/eleanor/tools.js";
+import { EleanorSessionStore, SessionBusyError } from "../src/eleanor/sessions.js";
 
 // -- compare_options, unit-level -------------------------------------------
 
@@ -270,5 +271,70 @@ describe("setEvents", () => {
 
     assert.equal(firstSeen.join(""), "first reply");
     assert.equal(secondSeen.join(""), "second reply");
+  });
+});
+
+describe("EleanorSessionStore", () => {
+  it("reuses the same agent for a returning user, keeping conversation history", async () => {
+    reset();
+    responses = [
+      sse([messageStart(), ...textBlock(0, "first reply"), ...finish("end_turn")]),
+      sse([messageStart(), ...textBlock(0, "second reply"), ...finish("end_turn")]),
+    ];
+
+    const store = new EleanorSessionStore();
+    await store.send("user-1", {}, (agent) => agent.run("first message"));
+    await store.send("user-1", {}, (agent) => agent.run("second message"));
+
+    // A fresh agent would send only the new message; a reused one carries
+    // the prior turn along too — [user, assistant, user] proves continuity.
+    const second = captured[1]!.body;
+    assert.equal(second["messages"].length, 3);
+    assert.match(JSON.stringify(second["messages"][0]), /first message/);
+  });
+
+  it("gives a different user their own agent, with no shared history", async () => {
+    reset();
+    responses = [
+      sse([messageStart(), ...textBlock(0, "reply to A"), ...finish("end_turn")]),
+      sse([messageStart(), ...textBlock(0, "reply to B"), ...finish("end_turn")]),
+    ];
+
+    const store = new EleanorSessionStore();
+    await store.send("user-a", {}, (agent) => agent.run("hello from A"));
+    await store.send("user-b", {}, (agent) => agent.run("hello from B"));
+
+    const second = captured[1]!.body;
+    assert.equal(second["messages"].length, 1);
+    assert.doesNotMatch(JSON.stringify(second["messages"]), /hello from A/);
+  });
+
+  it("rejects a second send while the first is still running", async () => {
+    reset();
+    responses = [sse([messageStart(), ...textBlock(0, "done"), ...finish("end_turn")])];
+
+    const store = new EleanorSessionStore();
+    const first = store.send("user-1", {}, (agent) => agent.run("first"));
+    await assert.rejects(
+      () => store.send("user-1", {}, (agent) => agent.run("second")),
+      SessionBusyError,
+    );
+    await first;
+  });
+
+  it("evicts an idle session so the next message starts fresh", async () => {
+    reset();
+    responses = [
+      sse([messageStart(), ...textBlock(0, "first reply"), ...finish("end_turn")]),
+      sse([messageStart(), ...textBlock(0, "second reply"), ...finish("end_turn")]),
+    ];
+
+    const store = new EleanorSessionStore({}, 10); // 10ms idle timeout
+    await store.send("user-1", {}, (agent) => agent.run("first message"));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    await store.send("user-1", {}, (agent) => agent.run("second message"));
+
+    const second = captured[1]!.body;
+    assert.equal(second["messages"].length, 1, "eviction should have started a fresh agent");
   });
 });

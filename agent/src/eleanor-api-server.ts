@@ -22,14 +22,20 @@ import express, { type Request, type Response } from "express";
 import type { ImageMediaType } from "./agent.js";
 import { EleanorSessionStore, SessionBusyError } from "./eleanor/sessions.js";
 import { DiscoveryLedger, type DiscoveryCard, type DiscoveryState } from "./eleanor/discovery.js";
+import { RateLimiter } from "./eleanor/rateLimit.js";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8081;
 const MAX_IMAGE_BASE64_CHARS = 8_000_000; // ~6MB decoded, generous for a phone photo
+const MAX_MESSAGE_CHARS = 8_000; // generous for a real message, not a pasted document
 
 app.use(express.json({ limit: "10mb" }));
 
 const store = new EleanorSessionStore();
+// 20 messages/minute/user — a real conversation never approaches this; a
+// runaway client (retry loop, bug) hits it fast and gets a 429 instead of an
+// unbounded API bill.
+const rateLimiter = new RateLimiter(20, 60_000);
 
 const VALID_MEDIA_TYPES: readonly ImageMediaType[] = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 
@@ -59,9 +65,18 @@ app.post("/message", async (req: Request, res: Response<MessageResponse>) => {
     return;
   }
 
+  if (!rateLimiter.allow(userId)) {
+    res.status(429).json({ success: false, reply: "", cards: [], discoveryState: emptyState, error: "Too many messages — wait a moment and try again." });
+    return;
+  }
+
   const message = typeof body.message === "string" ? body.message : "";
   if (!message.trim()) {
     res.status(400).json({ success: false, reply: "", cards: [], discoveryState: emptyState, error: "Missing or invalid 'message'" });
+    return;
+  }
+  if (message.length > MAX_MESSAGE_CHARS) {
+    res.status(400).json({ success: false, reply: "", cards: [], discoveryState: emptyState, error: `'message' is too long (max ${MAX_MESSAGE_CHARS} characters)` });
     return;
   }
 

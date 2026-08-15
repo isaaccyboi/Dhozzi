@@ -25,7 +25,7 @@ export const ELEANOR_PERSONA: AgentPersona = {
 };
 
 /** Sessions idle this long are dropped; the next message just starts a fresh one. */
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
 export class SessionBusyError extends Error {
   constructor() {
@@ -43,8 +43,10 @@ interface Entry {
 export class EleanorSessionStore {
   private readonly sessions = new Map<string, Entry>();
   private readonly config: AgentConfig;
+  private readonly idleTimeoutMs: number;
 
-  constructor(overrides: Partial<AgentConfig> = {}) {
+  constructor(overrides: Partial<AgentConfig> = {}, idleTimeoutMs: number = DEFAULT_IDLE_TIMEOUT_MS) {
+    this.idleTimeoutMs = idleTimeoutMs;
     this.config = {
       ...DEFAULT_CONFIG,
       // `root` and filesystem `approval` are unused — Eleanor's tool surface
@@ -90,7 +92,7 @@ export class EleanorSessionStore {
   }
 
   private evictIdle(): void {
-    const cutoff = Date.now() - IDLE_TIMEOUT_MS;
+    const cutoff = Date.now() - this.idleTimeoutMs;
     for (const [userId, entry] of this.sessions) {
       if (!entry.running && entry.lastUsedAt < cutoff) this.sessions.delete(userId);
     }

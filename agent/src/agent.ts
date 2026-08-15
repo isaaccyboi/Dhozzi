@@ -11,7 +11,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { BETAS, capabilitiesFor, type AgentConfig, type ModelCapabilities } from "./config.js";
 import { CostMeter } from "./cost.js";
-import { TOOLS, TOOLS_BY_NAME, type ToolContext } from "./tools.js";
+import { TOOLS, type ToolContext, type ToolDefinition } from "./tools.js";
 import { SafetyError } from "./safety.js";
 
 /**
@@ -73,6 +73,22 @@ Report outcomes faithfully. If tests fail, say so with the output. If you
 skipped a step, say that. When something is done and verified, state it plainly
 without hedging.`;
 
+/**
+ * What makes an Agent instance a particular product rather than another.
+ * The coding harness and Eleanor are the same loop, cache discipline, and
+ * degrade-on-400 behavior underneath — only the system prompt and the tool
+ * surface differ, so that's all a persona is.
+ */
+export interface AgentPersona {
+  systemPrompt: string;
+  tools: readonly ToolDefinition[];
+}
+
+export const CODING_PERSONA: AgentPersona = {
+  systemPrompt: SYSTEM_PROMPT,
+  tools: TOOLS,
+};
+
 export interface RunResult {
   finalText: string;
   turns: number;
@@ -85,8 +101,24 @@ export interface AgentEvents {
   onThinking?: (delta: string) => void;
   onToolCall?: (name: string, input: Record<string, unknown>) => void;
   onToolResult?: (name: string, result: string, isError: boolean) => void;
+  /**
+   * Fired alongside onToolResult when a tool attaches structured data meant
+   * for a UI to render (Eleanor's comparison cards, for instance). Never sent
+   * to the model — that stays prose-only via onToolResult's `result` string —
+   * this is purely a side channel for a consumer that wants richer output
+   * than text. Coding tools never set this, so it's a no-op for Chai-Kan.
+   */
+  onToolCard?: (name: string, card: Record<string, unknown>) => void;
   onTurnEnd?: (meter: CostMeter) => void;
   onNotice?: (message: string) => void;
+}
+
+export type ImageMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+
+/** A turn's input: text, optionally with images (vision, not a tool call). */
+export interface RunInput {
+  text: string;
+  images?: readonly { data: string; mediaType: ImageMediaType }[];
 }
 
 type Message = Anthropic.Beta.BetaMessageParam;
@@ -107,16 +139,20 @@ type Degradable =
 export class Agent {
   private readonly client: Anthropic;
   private readonly config: AgentConfig;
-  private readonly events: AgentEvents;
+  private events: AgentEvents;
   private readonly meter: CostMeter;
   private readonly toolContext: ToolContext;
   private readonly messages: Message[] = [];
   private readonly disabled = new Set<Degradable>();
   private readonly capabilities: ModelCapabilities;
+  private readonly persona: AgentPersona;
+  private readonly toolsByName: ReadonlyMap<string, ToolDefinition>;
 
-  constructor(config: AgentConfig, events: AgentEvents = {}) {
+  constructor(config: AgentConfig, events: AgentEvents = {}, persona: AgentPersona = CODING_PERSONA) {
     this.config = config;
     this.events = events;
+    this.persona = persona;
+    this.toolsByName = new Map(persona.tools.map((tool) => [tool.name, tool]));
     this.client = new Anthropic();
     this.meter = new CostMeter(config.model);
     this.capabilities = capabilitiesFor(config.model);
@@ -142,13 +178,31 @@ export class Agent {
     return this.meter;
   }
 
+  /**
+   * Rebind the event callbacks. For a long-lived agent reused across many
+   * requests (a chat session kept alive for prompt-cache warmth), each
+   * request needs its own callbacks — swap them in before calling run(), and
+   * only when no run is in flight, since they're shared mutable state.
+   */
+  setEvents(events: AgentEvents): void {
+    this.events = events;
+  }
+
   /** Send a task and run until the model stops calling tools. */
-  async run(task: string): Promise<RunResult> {
+  async run(task: string | RunInput): Promise<RunResult> {
+    const input: RunInput = typeof task === "string" ? { text: task } : task;
     const isFirstTurn = this.messages.length === 0;
-    this.messages.push({
-      role: "user",
-      content: [{ type: "text", text: isFirstTurn ? `${this.environmentPreamble()}\n\n${task}` : task }],
-    });
+    const text = isFirstTurn ? `${this.environmentPreamble()}\n\n${input.text}` : input.text;
+
+    // Images are vision content, not a tool call — the model sees them
+    // directly in the turn rather than fetching them through a tool.
+    const content: ContentBlockParam[] = (input.images ?? []).map((image) => ({
+      type: "image" as const,
+      source: { type: "base64" as const, media_type: image.mediaType, data: image.data },
+    }));
+    content.push({ type: "text", text });
+
+    this.messages.push({ role: "user", content });
 
     let finalText = "";
     let turns = 0;
@@ -249,7 +303,7 @@ export class Agent {
   }
 
   private toolDefinitions(): Anthropic.Beta.BetaToolUnion[] {
-    const custom = TOOLS.map((tool) => ({
+    const custom = this.persona.tools.map((tool) => ({
       name: tool.name,
       description: tool.description,
       input_schema: tool.input_schema,
@@ -306,7 +360,7 @@ export class Agent {
       system: [
         {
           type: "text",
-          text: SYSTEM_PROMPT,
+          text: this.persona.systemPrompt,
           ...(this.config.promptCaching ? { cache_control: { type: "ephemeral" } } : {}),
         },
       ],
@@ -398,7 +452,7 @@ export class Agent {
     const input = (use.input ?? {}) as Record<string, unknown>;
     this.events.onToolCall?.(use.name, input);
 
-    const tool = TOOLS_BY_NAME.get(use.name);
+    const tool = this.toolsByName.get(use.name);
     if (!tool) {
       const message = `Unknown tool: ${use.name}`;
       this.events.onToolResult?.(use.name, message, true);
@@ -408,6 +462,7 @@ export class Agent {
     try {
       const result = await tool.run(input, this.toolContext);
       this.events.onToolResult?.(use.name, result.content, result.isError);
+      if (result.card && !result.isError) this.events.onToolCard?.(use.name, result.card);
       return {
         type: "tool_result",
         tool_use_id: use.id,

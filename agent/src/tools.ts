@@ -17,6 +17,13 @@ import { classifyCommand, confirm, resolveInRoot, SafetyError } from "./safety.j
 export interface ToolResult {
   content: string;
   isError: boolean;
+  /**
+   * Structured data for a consumer that renders richer UI than prose — e.g.
+   * Eleanor's comparison cards. Never sent to the model; only `content` is.
+   * Surfaced to the harness's caller via AgentEvents.onToolCard. Coding tools
+   * never set this.
+   */
+  card?: Record<string, unknown>;
 }
 
 export interface ToolContext {

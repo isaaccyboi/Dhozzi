@@ -11,8 +11,10 @@
     "agent": "tsx src/index.ts",
     "web": "tsx src/web-cli.ts",
     "api": "tsx src/api-server.ts",
+    "eleanor-api": "tsx src/eleanor-api-server.ts",
     "build": "tsc",
     "start": "node dist/api-server.js",
+    "start:eleanor": "node dist/eleanor-api-server.js",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
     "eval": "tsx src/eval-cli.ts"

@@ -36,7 +36,7 @@ export const CAPABILITIES: readonly Capability[] = [
     id: "web.search",
     tools: ["web_search"],
     did: "I looked that up just now rather than going from memory, so it's current.",
-    next: "Anything that changes — prices, opening times, who won — ask and I'll check.",
+    next: "Anything that changes, prices, opening times, who won, ask and I'll check.",
     weight: 60,
   },
   {
@@ -50,7 +50,7 @@ export const CAPABILITIES: readonly Capability[] = [
     id: "image.read",
     tools: ["image_read"],
     did: "I had a proper look at the picture you sent.",
-    next: "Photos are fine — a dress, a document, a rash, a form you've been sent.",
+    next: "Photos are fine: a dress, a document, a rash, a form you've been sent.",
     weight: 90,
   },
   {
@@ -63,7 +63,7 @@ export const CAPABILITIES: readonly Capability[] = [
   {
     id: "draft",
     tools: ["draft_text"],
-    did: "I wrote that in your words, not mine — I matched how you'd already put it.",
+    did: "I wrote that in your words, not mine. I matched how you'd already put it.",
     next: "Emails, letters, the awkward ones especially. I'll draft and you edit.",
     weight: 65,
   },

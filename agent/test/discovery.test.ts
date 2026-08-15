@@ -37,11 +37,16 @@ describe("capability catalogue", () => {
     // The banned words are the ones that make her sound like a brochure. A
     // failure here means someone edited the copy without reading the persona.
     const banned = /\b(unlock|empower|seamless|journey|leverage|supercharge|exciting)\b/i;
+    const emoji = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
     for (const capability of CAPABILITIES) {
       assert.doesNotMatch(capability.did, banned, `${capability.id}.did`);
       assert.doesNotMatch(capability.next, banned, `${capability.id}.next`);
       assert.doesNotMatch(capability.did, /!/, `${capability.id}.did has an exclamation mark`);
       assert.doesNotMatch(capability.next, /!/, `${capability.id}.next has an exclamation mark`);
+      assert.doesNotMatch(capability.did, /—/, `${capability.id}.did has an em dash`);
+      assert.doesNotMatch(capability.next, /—/, `${capability.id}.next has an em dash`);
+      assert.doesNotMatch(capability.did, emoji, `${capability.id}.did has an emoji`);
+      assert.doesNotMatch(capability.next, emoji, `${capability.id}.next has an emoji`);
     }
   });
 });

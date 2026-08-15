@@ -56,7 +56,7 @@ export class EleanorSessionStore {
       approval: "auto",
       verify: false,
       webTools: true,
-      model: "claude-sonnet-5",
+      model: "claude-haiku-4-5",
       ...overrides,
     };
   }

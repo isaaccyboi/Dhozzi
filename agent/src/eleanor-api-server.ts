@@ -32,10 +32,15 @@ const MAX_MESSAGE_CHARS = 8_000; // generous for a real message, not a pasted do
 app.use(express.json({ limit: "10mb" }));
 
 const store = new EleanorSessionStore();
-// 20 messages/minute/user — a real conversation never approaches this; a
-// runaway client (retry loop, bug) hits it fast and gets a 429 instead of an
-// unbounded API bill.
-const rateLimiter = new RateLimiter(20, 60_000);
+// 20 messages/minute/user: a burst guard. A real conversation never
+// approaches this; a runaway client (retry loop, bug) hits it fast and gets
+// a 429 instead of an unbounded API bill.
+const burstLimiter = new RateLimiter(20, 60_000);
+// 50 messages/day/user: the actual usage quota for this tier, on Haiku.
+// Same in-memory limitation as the burst limiter (resets on restart, not
+// shared across instances) — fine for one beta deployment, would need a
+// shared store to hold for real once this runs multi-instance.
+const dailyLimiter = new RateLimiter(50, 24 * 60 * 60 * 1000);
 
 const VALID_MEDIA_TYPES: readonly ImageMediaType[] = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 
@@ -65,8 +70,13 @@ app.post("/message", async (req: Request, res: Response<MessageResponse>) => {
     return;
   }
 
-  if (!rateLimiter.allow(userId)) {
-    res.status(429).json({ success: false, reply: "", cards: [], discoveryState: emptyState, error: "Too many messages — wait a moment and try again." });
+  if (!burstLimiter.allow(userId)) {
+    res.status(429).json({ success: false, reply: "", cards: [], discoveryState: emptyState, error: "Too many messages. Wait a moment and try again." });
+    return;
+  }
+
+  if (!dailyLimiter.allow(userId)) {
+    res.status(429).json({ success: false, reply: "", cards: [], discoveryState: emptyState, error: "Today's message limit has been reached. It resets tomorrow." });
     return;
   }
 
@@ -159,6 +169,6 @@ app.get("/health", (_req: Request, res: Response) => {
 
 app.listen(PORT, () => {
   console.log(`Eleanor API server listening on port ${PORT}`);
-  console.log("POST /message — send a message");
-  console.log("GET  /health  — health check");
+  console.log("POST /message: send a message");
+  console.log("GET  /health:  health check");
 });

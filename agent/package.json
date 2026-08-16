@@ -1,0 +1,36 @@
+{
+  "name": "chai-kan",
+  "version": "7.74.0",
+  "private": true,
+  "type": "module",
+  "description": "Chai-Kan 7.74 by Dhozzi — a verifying, cost-aware coding agent harness built on the Claude API. Not a model.",
+  "bin": {
+    "chai-kan": "./dist/index.js"
+  },
+  "scripts": {
+    "agent": "tsx src/index.ts",
+    "web": "tsx src/web-cli.ts",
+    "api": "tsx src/api-server.ts",
+    "eleanor-api": "tsx src/eleanor-api-server.ts",
+    "build": "tsc",
+    "start": "node dist/api-server.js",
+    "start:eleanor": "node dist/eleanor-api-server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "eval": "tsx src/eval-cli.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.0",
+    "express": "^4.22.2",
+    "fast-glob": "^3.3.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.25",
+    "@types/node": "^22.14.0",
+    "tsx": "^4.19.2",
+    "typescript": "~5.8.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
